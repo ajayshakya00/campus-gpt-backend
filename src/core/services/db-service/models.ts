@@ -1,0 +1,27 @@
+import { BuildingModel } from 'src/modules/building/building.schema';
+import {
+  ChatHistoryModel,
+  ChatMessageModel,
+} from 'src/modules/chatbot/chat.schema';
+import {
+  CourseModel,
+  SubjectModel,
+  TimetableModel,
+  UserCoursesModel,
+} from 'src/modules/courses/courses.schema';
+import { EventModel } from 'src/modules/events/events.schema';
+import { FacultyModel } from 'src/modules/faculty/faculty.schema';
+
+export const MONGOOSE_MODELS = {};
+
+export const SQL_MODELS = {
+  ChatHistoryModel: ChatHistoryModel.setup,
+  ChatMessageModel: ChatMessageModel.setup,
+  CoursesModel: CourseModel.setup,
+  SubjectModel: SubjectModel.setup,
+  TimetableModel: TimetableModel.setup,
+  FacultyModel: FacultyModel.setup,
+  UserCoursesModel: UserCoursesModel.setup,
+  BuildingModel: BuildingModel.setup,
+  EventModel: EventModel.setup,
+};
