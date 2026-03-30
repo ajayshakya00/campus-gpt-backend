@@ -1,5 +1,9 @@
 // src/chat/chat.service.ts
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import axios from 'axios';
 import { DbService } from 'src/core/services/db-service/db.service';
 import { ChatHistoryModel, ChatMessageModel } from './chat.schema';
@@ -70,12 +74,18 @@ export class ChatService {
       content: `these are the university events details : ${JSON.stringify(events)}`,
     });
 
+    console.log({ data });
+
     return data;
   }
 
   async getChatRoomById(id: string) {
     const room = await this.ChatHistoryModel.findByPk(id);
+
     if (!room) throw new NotFoundException('Room does not exists');
+
+    console.log({ initial: room });
+
     return room?.dataValues;
   }
 
@@ -111,7 +121,13 @@ export class ChatService {
       where: { chatId },
       order: [['createdAt', 'ASC']],
     });
+
+    console.log({ room });
+
     const trainingData = await this.getModelTrainingData(room.userId);
+
+    console.log({ trainingData });
+
     // Convert DB history to OpenAI-compatible format
     const formattedMessages = [
       ...trainingData,
@@ -122,28 +138,36 @@ export class ChatService {
     ];
 
     // Send to OpenRouter API
-    const response = await axios.post(
-      this.OPENROUTER_URL,
-      {
-        model: this.OPENROUTER_MODEL,
-        messages: formattedMessages,
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${this.OPENROUTER_API_KEY}`,
-          'Content-Type': 'application/json',
+    //
+    try {
+      const response = await axios.post(
+        this.OPENROUTER_URL,
+        {
+          model: this.OPENROUTER_MODEL,
+          messages: formattedMessages,
         },
-      },
-    );
+        {
+          headers: {
+            Authorization: `Bearer ${this.OPENROUTER_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+        },
+      );
 
-    const botReply = response.data.choices[0].message.content;
+      console.log({ response });
 
-    // Save bot reply to DB
-    return await this.ChatMessageModel.create({
-      chatId,
-      role: 'assistant',
-      content: botReply,
-    });
+      const botReply = response.data.choices[0].message.content;
+
+      // Save bot reply to DB
+      return await this.ChatMessageModel.create({
+        chatId,
+        role: 'assistant',
+        content: botReply,
+      });
+    } catch (err: any) {
+      console.log(err);
+      return new BadRequestException('someting went worong');
+    }
   }
 
   async createChatSession(data: CreateChatSessionDto, userId: string) {
