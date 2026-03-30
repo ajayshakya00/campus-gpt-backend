@@ -84,12 +84,19 @@ export class ChatService {
     chatId: string,
     file?: Express.Multer.File,
   ) {
+    console.log('chat id: ', chatId);
+
     const room = await this.getChatRoomById(chatId);
+
+    console.log('chat id 2: ', chatId);
+
     await this.ChatMessageModel.create({
       chatId,
       role: 'user',
       content: userMessage,
     });
+
+    console.log('chat id 3: ', chatId);
 
     if (file) {
       const pdfData = await pdfParse(file.buffer);
@@ -155,6 +162,8 @@ export class ChatService {
   }
 
   async getChatMessages(chatId: string) {
+    console.log({ chatId });
+
     return this.ChatMessageModel.findAll({
       where: { chatId },
       order: [['createdAt', 'ASC']],

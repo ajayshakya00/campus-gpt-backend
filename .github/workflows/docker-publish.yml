@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+
 env:
   DOCKER_USERNAME: ajayshakya786
   DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
