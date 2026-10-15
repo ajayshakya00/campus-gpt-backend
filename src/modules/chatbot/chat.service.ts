@@ -17,9 +17,13 @@ import { EventService } from '../events/events.services';
 
 @Injectable()
 export class ChatService {
-  private readonly OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
-  private readonly OPENROUTER_MODEL = process.env.OPENROUTER_MODEL;
-  private readonly OPENROUTER_URL = process.env.OPENROUTER_URL!;
+  private readonly GEMINI_API_KEY =
+    process.env.GEMINI_API_KEY || process.env.OPENROUTER_API_KEY;
+  private readonly GEMINI_MODEL =
+    process.env.GEMINI_MODEL || 'gemini-3.5-flash';
+  private readonly GEMINI_URL =
+    process.env.GEMINI_URL ||
+    'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
   private readonly ChatMessageModel: typeof ChatMessageModel;
   private readonly ChatHistoryModel: typeof ChatHistoryModel;
   constructor(
@@ -128,31 +132,64 @@ export class ChatService {
 
     console.log({ trainingData });
 
-    // Convert DB history to OpenAI-compatible format
-    const formattedMessages = [
-      ...trainingData,
-      ...history.map((msg) => ({
-        role: msg.role,
-        content: msg.content,
-      })),
+    // Combine all system messages into a single system prompt
+    // (Gemini's OpenAI compatibility endpoint overwrites earlier system messages if sent separately)
+    const systemContents = [
+      ...trainingData.map((msg) => msg.content),
+      ...history
+        .filter((msg) => (msg.role ?? msg.dataValues?.role) === 'system')
+        .map((msg) => msg.content ?? msg.dataValues?.content),
     ];
 
-    // Send to OpenRouter API
-    //
+    const formattedMessages = [
+      {
+        role: 'system',
+        content: systemContents.join('\n\n'),
+      },
+      ...history
+        .filter((msg) => (msg.role ?? msg.dataValues?.role) !== 'system')
+        .map((msg) => ({
+          role: msg.role ?? msg.dataValues?.role,
+          content: msg.content ?? msg.dataValues?.content,
+        })),
+    ];
+
+    // Send to Gemini API
     try {
-      const response = await axios.post(
-        this.OPENROUTER_URL,
-        {
-          model: this.OPENROUTER_MODEL,
-          messages: formattedMessages,
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${this.OPENROUTER_API_KEY}`,
-            'Content-Type': 'application/json',
+      let response;
+      try {
+        response = await axios.post(
+          this.GEMINI_URL,
+          {
+            model: this.GEMINI_MODEL,
+            messages: formattedMessages,
           },
-        },
-      );
+          {
+            headers: {
+              Authorization: `Bearer ${this.GEMINI_API_KEY}`,
+              'Content-Type': 'application/json',
+            },
+          },
+        );
+      } catch (primaryErr: any) {
+        if (this.GEMINI_MODEL !== 'gemini-3.5-flash') {
+          response = await axios.post(
+            this.GEMINI_URL,
+            {
+              model: 'gemini-3.5-flash',
+              messages: formattedMessages,
+            },
+            {
+              headers: {
+                Authorization: `Bearer ${this.GEMINI_API_KEY}`,
+                'Content-Type': 'application/json',
+              },
+            },
+          );
+        } else {
+          throw primaryErr;
+        }
+      }
 
       console.log({ response });
 
@@ -165,7 +202,7 @@ export class ChatService {
         content: botReply,
       });
     } catch (err: any) {
-      console.log(err);
+      console.log(err?.response?.data || err);
       return new BadRequestException('someting went worong');
     }
   }
