@@ -50,6 +50,14 @@ async function bootstrapServer() {
 async function handler(req, res) {
   try {
     const server = await bootstrapServer();
+
+    // Normalize URL if prefixed with /api (except Swagger docs at /api/docs)
+    if (req.url === '/api' || req.url === '/api/') {
+      req.url = '/';
+    } else if (req.url.startsWith('/api/') && !req.url.startsWith('/api/docs')) {
+      req.url = req.url.replace(/^\/api/, '');
+    }
+
     return server(req, res);
   } catch (err) {
     console.error('SERVERLESS_INVOCATION_ERROR:', err);
