@@ -5,7 +5,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { LoggerInterceptor } from '../src/core/services/logger/logger.interceptor';
 import { LoggerService } from '../src/core/services/logger/logger.service';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
-import * as express from 'express';
+import express = require('express');
 
 let cachedServer: express.Express;
 
