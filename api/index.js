@@ -36,7 +36,7 @@ async function bootstrapServer() {
         .setVersion('1.0')
         .build();
       const documentFactory = () => SwaggerModule.createDocument(app, config);
-      SwaggerModule.setup('api/docs', app, documentFactory);
+      SwaggerModule.setup('docs', app, documentFactory);
     } catch (e) {
       console.warn('Swagger setup skipped:', e?.message);
     }

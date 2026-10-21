@@ -7,16 +7,9 @@
       "maxDuration": 30
     }
   },
-  "redirects": [
-    {
-      "source": "/",
-      "destination": "/api",
-      "permanent": false
-    }
-  ],
   "rewrites": [
     {
-      "source": "/((?!api).*)",
+      "source": "/((?!api$).*)",
       "destination": "/api"
     }
   ]
