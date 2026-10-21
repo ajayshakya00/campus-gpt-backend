@@ -11,9 +11,22 @@ export class SqlService {
   constructor(uri: string) {
     /* eslint-disable @typescript-eslint/no-unsafe-call */
     try {
-      this.sequelize = new Sequelize(uri, {
+      const isRemote =
+        uri &&
+        !uri.includes('localhost') &&
+        !uri.includes('127.0.0.1');
+
+      this.sequelize = new Sequelize(uri || 'postgres://localhost:5432/postgres', {
         dialect: 'postgres',
-        logging: console.log,
+        logging: process.env.NODE_ENV === 'production' ? false : console.log,
+        dialectOptions: isRemote
+          ? {
+              ssl: {
+                require: true,
+                rejectUnauthorized: false,
+              },
+            }
+          : {},
       });
 
       this.logger.log('Initializing models...');
@@ -29,7 +42,9 @@ export class SqlService {
       this.logger.log('✅ All models initialized and associated.');
     } catch (err) {
       this.logger.error('Database connection error:', err);
-      throw err;
+      if (!process.env.VERCEL) {
+        throw err;
+      }
     }
   }
 
@@ -45,8 +60,8 @@ export class SqlService {
       );
       if (!process.env.VERCEL) {
         process.exit(1); // Immediately stop the app locally
+        throw err;
       }
-      throw err;
     }
   }
 

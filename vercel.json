@@ -1,5 +1,12 @@
 {
   "version": 2,
+  "buildCommand": "yarn build",
+  "functions": {
+    "api/index.js": {
+      "includeFiles": "dist/**",
+      "maxDuration": 30
+    }
+  },
   "rewrites": [
     {
       "source": "/(.*)",

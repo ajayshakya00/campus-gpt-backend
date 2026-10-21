@@ -40,8 +40,8 @@ export class DbService implements OnModuleInit {
       );
       if (!process.env.VERCEL) {
         process.exit(1);
+        throw error;
       }
-      throw error;
     }
   }
 
