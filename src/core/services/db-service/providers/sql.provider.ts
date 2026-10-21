@@ -40,10 +40,13 @@ export class SqlService {
       this.logger.log('✅ Successfully connected to PostgreSQL!');
     } catch (err) {
       this.logger.error(
-        '❌ Failed to connect to the database. Exiting app.',
+        '❌ Failed to connect to the database.',
         err,
       );
-      process.exit(1); // Immediately stop the app
+      if (!process.env.VERCEL) {
+        process.exit(1); // Immediately stop the app locally
+      }
+      throw err;
     }
   }
 
