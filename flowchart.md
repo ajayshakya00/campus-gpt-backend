@@ -129,9 +129,11 @@ flowchart TD
 
 ---
 
-## 4. Chatbot Conversation & Deterministic AI Context Pruning
+## 4. Chatbot Conversation & Two-Tier Semantic RAG Execution Flow
 
-The AI Chatbot provides student-specific, hallucination-free answers by assembling deterministic relational context (timetable, enrolled subjects, campus events, building locations) before generating an LLM response.
+The AI Chatbot provides student-specific, hallucination-free answers via a Two-Tier architecture combining deterministic relational context with semantic vector retrieval across pre-indexed Entity Cards.
+
+### 4.1 Two-Tier RAG Message Handling Sequence
 
 ```mermaid
 sequenceDiagram
@@ -139,46 +141,69 @@ sequenceDiagram
     actor Student
     participant ChatCtrl as ChatController (src/modules/chatbot/chat.controller.ts)
     participant ChatSvc as ChatService (src/modules/chatbot/chat.service.ts)
-    participant DbSvc as DbService / SqlService (PostgreSQL)
-    participant Gemini as Google Gemini 3.5 Flash API
+    participant RagSvc as RagService (src/modules/rag/rag.service.ts)
+    participant DbSvc as DbService / PostgreSQL (Supabase pgvector)
+    participant GeminiEmb as Gemini Embedding API (gemini-embedding-001)
+    participant GeminiLLM as Gemini 3.5 Flash API (LLM)
 
-    Student->>ChatCtrl: POST /chat/message { chatId, content }
-    ChatCtrl->>ChatSvc: sendMessage({ chatId, content }, req.user.id)
+    Student->>ChatCtrl: POST /chat/message { chatId, content: "Where is room 38-702?" }
+    ChatCtrl->>ChatSvc: handleMessage(userMessage, chatId)
     
     ChatSvc->>DbSvc: ChatHistoryModel.findByPk(chatId)
-    DbSvc-->>ChatSvc: Return Chat Room (userId, courseId, title)
+    DbSvc-->>ChatSvc: Return Chat Room (userId, title)
     
     ChatSvc->>DbSvc: ChatMessageModel.create({ chatId, role: 'user', content })
-    DbSvc-->>ChatSvc: Message Saved
-    
+    DbSvc-->>ChatSvc: User message saved
+
     rect rgb(240, 248, 255)
-        Note over ChatSvc,DbSvc: Deterministic Grounding & Context Pruning
-        ChatSvc->>ChatSvc: getModelTrainingData(room.userId)
-        ChatSvc->>DbSvc: Fetch Student Enrolled Course & Subjects
-        ChatSvc->>DbSvc: Fetch Today's Timetable Slots (DayOfWeek, Times, Rooms)
-        ChatSvc->>DbSvc: Fetch Faculty Details (Names, Emails, Cabin Locations)
-        ChatSvc->>DbSvc: Fetch Campus Buildings (Codes, Google Map URLs)
-        ChatSvc->>DbSvc: Fetch Upcoming University Events
-        DbSvc-->>ChatSvc: Structured Domain Context
+        Note over ChatSvc,DbSvc: TIER 1: Personal Deterministic Context Pruning
+        ChatSvc->>DbSvc: CourseService.getUserCourse(userId)
+        DbSvc-->>ChatSvc: Enrolled Course (e.g. MCA)
+        ChatSvc->>DbSvc: CourseService.getSubjects(courseId)
+        Note over ChatSvc: Filter today's timetable slots by current day of week<br/>Extract room, time, subject, teacher
+    end
+
+    rect rgb(255, 245, 238)
+        Note over ChatSvc,GeminiEmb: TIER 2: Semantic Campus Knowledge Retrieval (RAG)
+        ChatSvc->>RagSvc: queryRelevantCards(userMessage, 3)
+        RagSvc->>GeminiEmb: POST /models/gemini-embedding-001:embedContent { text: query, outputDim: 768 }
+        GeminiEmb-->>RagSvc: 768-dimensional query vector
+        RagSvc->>DbSvc: SELECT title, content, 1 - (embedding <=> :vector) as similarity<br/>FROM campus_knowledge_cards ORDER BY embedding <=> :vector ASC LIMIT 3
+        DbSvc-->>RagSvc: Top 3 matching Entity Cards (e.g. Block 38 card with Google Maps link)
+        RagSvc-->>ChatSvc: Relevant Campus Cards array
     end
 
     ChatSvc->>DbSvc: ChatMessageModel.findAll({ where: { chatId }, order: [['createdAt', 'ASC']] })
     DbSvc-->>ChatSvc: Previous Conversation History
 
-    rect rgb(255, 250, 240)
-        Note over ChatSvc: System Prompt Consolidation
-        ChatSvc->>ChatSvc: Merge initial guidelines + creators ('Ajay, Muskan, Madhav, Aayush, Prince') + grounding
-        ChatSvc->>ChatSvc: Combine into a single unified system prompt to avoid Gemini overwrite
+    rect rgb(245, 255, 245)
+        Note over ChatSvc: Prompt Consolidation
+        ChatSvc->>ChatSvc: Merge initial guidelines + team attribution + Tier 1 (schedule) + Tier 2 (cards)
     end
 
-    ChatSvc->>Gemini: POST https://generativelanguage.googleapis.com/v1beta/openai/chat/completions
-    Note right of Gemini: Model: gemini-3.5-flash<br/>Messages: [ { role: 'system', content }, ...history ]
-    Gemini-->>ChatSvc: 200 OK: { choices: [ { message: { content: botReply } } ] }
+    ChatSvc->>GeminiLLM: POST /v1beta/openai/chat/completions { model: 'gemini-3.5-flash', messages }
+    GeminiLLM-->>ChatSvc: 200 OK: { choices: [ { message: { content: botReply } } ] }
 
     ChatSvc->>DbSvc: ChatMessageModel.create({ chatId, role: 'assistant', content: botReply })
     DbSvc-->>ChatSvc: Bot Message Persisted
     ChatSvc-->>ChatCtrl: Return Persisted Bot Message
     ChatCtrl-->>Student: 200 OK: { data: botReply, meta: { success: true } }
+```
+
+### 4.2 Entity Cards Sync & Vector Indexing Pipeline
+
+```mermaid
+flowchart TD
+    Trigger["Application Bootstrap or POST /rag/sync"] --> CheckCount{"campus_knowledge_cards is empty?"}
+    CheckCount -->|"No and not manual sync"| Skip["Skip (Index already active)"]
+    CheckCount -->|"Yes or manual sync"| FetchEntities["Fetch Relational Tables:<br/>- Faculties<br/>- Buildings & Coordinates<br/>- Subjects & Timetables<br/>- Events<br/>- Degree Programs"]
+
+    FetchEntities --> BuildMarkdown["Transform into Modular Markdown Entity Cards:<br/>- # Faculty Profile: Name, Email, Phone, Subjects<br/>- # Campus Location: Name, Lat/Lng, Google Maps link, Rooms<br/>- # Subject Curriculum: Program, Teacher, Weekly Schedule<br/>- # Campus Event: Date/Time, Venue, Details"]
+
+    BuildMarkdown --> BatchEmbed["RagService.batchGenerateEmbeddings()<br/>gemini-embedding-001 (dim: 768) in batches of 40"]
+    BatchEmbed --> PgVectorUpsert["Upsert into campus_knowledge_cards with ON CONFLICT (entityType, entityId)"]
+    PgVectorUpsert --> HNSWIndex["HNSW Vector Index (vector_cosine_ops) updated"]
+    HNSWIndex --> Done["✅ 36+ Entity Cards Ready for Sub-Second Semantic Retrieval"]
 ```
 
 ---

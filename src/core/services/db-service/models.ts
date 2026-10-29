@@ -11,6 +11,7 @@ import {
 } from 'src/modules/courses/courses.schema';
 import { EventModel } from 'src/modules/events/events.schema';
 import { FacultyModel } from 'src/modules/faculty/faculty.schema';
+import { KnowledgeCardModel } from 'src/modules/rag/rag.schema';
 
 export const MONGOOSE_MODELS = {};
 
@@ -24,4 +25,6 @@ export const SQL_MODELS = {
   UserCoursesModel: UserCoursesModel.setup,
   BuildingModel: BuildingModel.setup,
   EventModel: EventModel.setup,
+  KnowledgeCardModel: KnowledgeCardModel.setup,
 };
+

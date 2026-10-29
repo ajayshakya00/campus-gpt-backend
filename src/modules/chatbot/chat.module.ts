@@ -6,9 +6,11 @@ import { CoursesModule } from '../courses/courses.module';
 import { FacultyModule } from '../faculty/faculty.module';
 import { BuildingModule } from '../building/building.module';
 import { EventModule } from '../events/events.module';
+import { RagModule } from '../rag/rag.module';
+
 @Module({
   controllers: [ChatController],
   providers: [ChatService],
-  imports: [CoursesModule, FacultyModule, BuildingModule, EventModule],
+  imports: [CoursesModule, FacultyModule, BuildingModule, EventModule, RagModule],
 })
 export class ChatModule {}

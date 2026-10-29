@@ -237,6 +237,13 @@ All successful responses follow the unified envelope:
 | `GET` | `/dashboard/admin` | Admin | Executive summary of university operational state | `{ totalStudents, totalFaculty, totalCourses, totalBuildings, recentEnrollments, upcomingEvents }` |
 | `GET` | `/dashboard/student`| Bearer | Personal student daily agenda | `{ enrolledCourse, todayTimetable, upcomingEvents }` |
 
+### 3.8 Semantic RAG & Knowledge Cards Service (`/rag`)
+
+| Method | Endpoint | Auth | Description | Payload Sample |
+| :--- | :--- | :--- | :--- | :--- |
+| `POST` | `/rag/sync` | Admin / Internal | Re-index all faculties, buildings, subjects, and events into vector cards | None |
+| `GET` | `/rag/search?q=<query>&limit=<n>` | Optional | Run semantic cosine similarity search across knowledge cards | Query params: `q=Where is room 38-702&limit=3` |
+
 ---
 
 ## 4. Environment Variables Specification

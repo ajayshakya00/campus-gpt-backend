@@ -14,6 +14,7 @@ import { FacultyService } from '../faculty/faculty.services';
 import { BuildingService } from '../building/building.service';
 import * as pdfParse from 'pdf-parse';
 import { EventService } from '../events/events.services';
+import { RagService } from '../rag/rag.service';
 
 @Injectable()
 export class ChatService {
@@ -32,53 +33,118 @@ export class ChatService {
     private readonly facultyService: FacultyService,
     private readonly buildingService: BuildingService,
     private readonly eventService: EventService,
+    private readonly ragService: RagService,
   ) {
     this.ChatMessageModel = this.dbService.sqlService.ChatMessageModel;
     this.ChatHistoryModel = this.dbService.sqlService.ChatHistoryModel;
   }
 
-  private async getModelTrainingData(userId: string) {
-    const data = [
+  private async getModelTrainingData(userId: string, userMessage: string) {
+    const data: Array<{ role: string; content: string }> = [
       ...INITIAL_MODEL_DATA.map((content) => ({
         role: 'system',
         content,
       })),
     ];
+
+    // ==========================================
+    // TIER 1: Personal Deterministic Context
+    // ==========================================
     try {
       const course = await this.courseService.getUserCourse(userId);
-      data.push({
-        role: 'system',
-        content: `I am enrolled in this course: ${JSON.stringify(course)}`,
-      });
+      if (course) {
+        const todayDay = new Date().toLocaleDateString('en-US', {
+          weekday: 'long',
+        });
+        const enrolledSubjects = await this.courseService.getSubjects(course.id);
+
+        const todaySlots: Array<{
+          subject: string;
+          startTime: string;
+          endTime: string;
+          room: string;
+          teacher: string;
+        }> = [];
+
+        for (const sub of enrolledSubjects) {
+          const s = (sub.dataValues || sub) as any;
+          const slots = (s.timetables || []).filter(
+            (t: any) =>
+              (t.day || t.dataValues?.day)?.toLowerCase() ===
+              todayDay.toLowerCase(),
+          );
+          for (const slot of slots) {
+            const val = slot.dataValues || slot;
+            todaySlots.push({
+              subject: s.name,
+              startTime: val.startTime,
+              endTime: val.endTime,
+              room: val.room || 'TBD',
+              teacher: s.teacher?.name || 'Assigned Instructor',
+            });
+          }
+        }
+
+        todaySlots.sort((a, b) => a.startTime.localeCompare(b.startTime));
+
+        const studentProfile = [
+          `### Student Profile & Schedule:`,
+          `- **Enrolled Program**: ${course.name} (${course.code})`,
+          `- **Today**: ${todayDay}`,
+          `- **Classes Today (${todayDay})**:`,
+          todaySlots.length > 0
+            ? todaySlots
+                .map(
+                  (t) =>
+                    `  * ${t.startTime} - ${t.endTime}: **${t.subject}** in Room **${t.room}** (Faculty: ${t.teacher})`,
+                )
+                .join('\n')
+            : '  * No classes scheduled for today.',
+          `- **Enrolled Subjects**: ${enrolledSubjects
+            .map((s) => s.dataValues?.name || s.name)
+            .join(', ')}`,
+        ].join('\n');
+
+        data.push({
+          role: 'system',
+          content: studentProfile,
+        });
+      } else {
+        data.push({
+          role: 'system',
+          content:
+            'Student Status: Not enrolled in any course program yet. Prompt them to select their program (MCA/BCA) if they ask for personal schedules.',
+        });
+      }
     } catch (err) {
-      console.log(err);
+      console.error('Error fetching Tier 1 personal context:', err);
     }
 
-    const faculties = await this.facultyService.findAll();
-    data.push({
-      role: 'system',
-      content: `these are my universities faculties : ${JSON.stringify(faculties)}`,
-    });
+    // ==========================================
+    // TIER 2: Semantic Campus Knowledge (RAG)
+    // ==========================================
+    try {
+      const relevantCards = await this.ragService.queryRelevantCards(
+        userMessage,
+        3,
+      );
 
-    const subjects = await this.courseService.getSubjects();
-    data.push({
-      role: 'system',
-      content: `these are my universities subjects with their timetable : ${JSON.stringify(subjects)}`,
-    });
+      if (relevantCards && relevantCards.length > 0) {
+        const cardsText = relevantCards
+          .map(
+            (card, idx) =>
+              `--- Card ${idx + 1}: ${card.title} ---\n${card.content}`,
+          )
+          .join('\n\n');
 
-    const buildings = await this.buildingService.getAllBuildings();
-    data.push({
-      role: 'system',
-      content: `these are my universities buildings with their locations : ${JSON.stringify(buildings)} \n\n when i ask for location then give me the google map link with these coordinates. for example i ask for my class location and room matches with the building then give the that perticular building location`,
-    });
-
-    const events = await this.eventService.getEvents();
-    data.push({
-      role: 'system',
-      content: `these are the university events details : ${JSON.stringify(events)}`,
-    });
-
-    console.log({ data });
+        data.push({
+          role: 'system',
+          content: `### Relevant Campus Knowledge:\n${cardsText}\n\nNote: If asked for directions or locations, always use the Google Maps navigation links provided in the cards above.`,
+        });
+      }
+    } catch (err) {
+      console.error('Error retrieving Tier 2 RAG context:', err);
+    }
 
     return data;
   }
@@ -98,19 +164,13 @@ export class ChatService {
     chatId: string,
     file?: Express.Multer.File,
   ) {
-    console.log('chat id: ', chatId);
-
     const room = await this.getChatRoomById(chatId);
-
-    console.log('chat id 2: ', chatId);
 
     await this.ChatMessageModel.create({
       chatId,
       role: 'user',
       content: userMessage,
     });
-
-    console.log('chat id 3: ', chatId);
 
     if (file) {
       const pdfData = await pdfParse(file.buffer);
@@ -126,11 +186,10 @@ export class ChatService {
       order: [['createdAt', 'ASC']],
     });
 
-    console.log({ room });
-
-    const trainingData = await this.getModelTrainingData(room.userId);
-
-    console.log({ trainingData });
+    const trainingData = await this.getModelTrainingData(
+      room.userId,
+      userMessage,
+    );
 
     // Combine all system messages into a single system prompt
     // (Gemini's OpenAI compatibility endpoint overwrites earlier system messages if sent separately)
@@ -190,8 +249,6 @@ export class ChatService {
           throw primaryErr;
         }
       }
-
-      console.log({ response });
 
       const botReply = response.data.choices[0].message.content;
 

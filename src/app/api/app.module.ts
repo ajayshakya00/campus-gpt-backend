@@ -12,6 +12,7 @@ import { FacultyModule } from 'src/modules/faculty/faculty.module';
 import { BuildingModule } from 'src/modules/building/building.module';
 import { DashboardModule } from 'src/modules/dashboard/dashboard.module';
 import { EventModule } from 'src/modules/events/events.module';
+import { RagModule } from 'src/modules/rag/rag.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { EventModule } from 'src/modules/events/events.module';
     BuildingModule,
     DashboardModule,
     EventModule,
+    RagModule,
   ],
   providers: [
     {
