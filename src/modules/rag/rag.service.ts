@@ -260,21 +260,28 @@ export class RagService implements OnApplicationBootstrap {
       });
     }
 
-    // 5. Index Courses Summary
+    // 5. Index Courses Summary with Curriculum and Teachers
     for (const crs of courses) {
       const c = crs.dataValues;
-      const subjectsInCourse = subjects
-        .filter((s) => s.dataValues.courseId === c.id)
-        .map((s) => s.dataValues.name);
+      const subjectsInCourse = subjects.filter(
+        (s) => s.dataValues.courseId === c.id,
+      );
+
+      const subjectLines = subjectsInCourse.map((sub) => {
+        const s = sub.dataValues;
+        const teacher = faculties.find(
+          (f) => f.dataValues.id === s.teacherId,
+        )?.dataValues;
+        return `  * **${s.name}**: Faculty ${teacher?.name || 'Assigned Instructor'} (${teacher?.email || 'N/A'})`;
+      });
 
       const content = [
         `# Degree Program: ${c.name} (${c.code})`,
         `- **Program Code**: ${c.code}`,
-        `- **Core Subjects**: ${
-          subjectsInCourse.length > 0
-            ? subjectsInCourse.join(', ')
-            : 'Curriculum being finalized'
-        }`,
+        `- **Course Curriculum & Instructors**:`,
+        ...(subjectLines.length > 0
+          ? subjectLines
+          : ['  * Curriculum details being finalized']),
       ].join('\n');
 
       cards.push({
@@ -289,6 +296,50 @@ export class RagService implements OnApplicationBootstrap {
         },
       });
     }
+
+    // 6. Index Hub Directory Cards for Broad/Global Queries
+    // 6.1 Complete University Faculty & Professors Directory
+    const facultyDirectoryLines = faculties.map((fac) => {
+      const f = fac.dataValues;
+      return `- **${f.name}**: ${f.designation || 'Faculty Member'} | Email: ${f.email} | Phone: ${f.phone || 'N/A'}`;
+    });
+
+    cards.push({
+      entityType: 'directory',
+      entityId: 'all-faculties-directory',
+      title: 'Directory: All University Faculty Members & Professors (MCA & BCA)',
+      content: [
+        '# Complete University Faculty & Professors Directory',
+        'Official verified directory of all university faculties, instructors, and professors for MCA and BCA:',
+        ...facultyDirectoryLines,
+      ].join('\n'),
+      metadata: {
+        type: 'faculty_directory',
+        count: faculties.length,
+      },
+    });
+
+    // 6.2 Complete Campus Buildings & Locations Directory
+    const buildingDirectoryLines = buildings.map((bldg) => {
+      const b = bldg.dataValues;
+      const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${b.latitude},${b.longitude}`;
+      return `- **${b.name}**: ${b.description || 'Academic Block'} | GPS: ${b.latitude}, ${b.longitude} | [Google Maps Directions](${mapsUrl})`;
+    });
+
+    cards.push({
+      entityType: 'directory',
+      entityId: 'all-buildings-directory',
+      title: 'Directory: All Campus Buildings & Navigation Links',
+      content: [
+        '# Complete Campus Buildings & Locations Directory',
+        'Official directory of all academic blocks, room ranges, GPS coordinates, and Google Maps navigation links:',
+        ...buildingDirectoryLines,
+      ].join('\n'),
+      metadata: {
+        type: 'building_directory',
+        count: buildings.length,
+      },
+    });
 
     this.logger.log(`Generated ${cards.length} Entity Cards. Generating embeddings...`);
 

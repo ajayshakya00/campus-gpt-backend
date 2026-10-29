@@ -87,6 +87,12 @@ export class ChatService {
 
         todaySlots.sort((a, b) => a.startTime.localeCompare(b.startTime));
 
+        const allFaculties = await this.facultyService.findAll();
+        const facultyListLines = allFaculties.map((f: any) => {
+          const val = f.dataValues || f;
+          return `  * **${val.name}**: ${val.designation || 'Faculty Member'} | Email: ${val.email} | Phone: ${val.phone || 'N/A'}`;
+        });
+
         const studentProfile = [
           `### Student Profile & Schedule:`,
           `- **Enrolled Program**: ${course.name} (${course.code})`,
@@ -103,6 +109,8 @@ export class ChatService {
           `- **Enrolled Subjects**: ${enrolledSubjects
             .map((s) => s.dataValues?.name || s.name)
             .join(', ')}`,
+          `- **Complete Faculty Directory for ${course.name} (${course.code})**:`,
+          ...facultyListLines,
         ].join('\n');
 
         data.push({
@@ -124,9 +132,14 @@ export class ChatService {
     // TIER 2: Semantic Campus Knowledge (RAG)
     // ==========================================
     try {
+      const isBroadQuery =
+        /\b(all|every|list|professors|teachers|faculties|faculty|directory|buildings|rooms|locations)\b/i.test(
+          userMessage,
+        );
+      const cardLimit = isBroadQuery ? 5 : 4;
       const relevantCards = await this.ragService.queryRelevantCards(
         userMessage,
-        3,
+        cardLimit,
       );
 
       if (relevantCards && relevantCards.length > 0) {
